@@ -1,5 +1,10 @@
 import jwt from "jsonwebtoken";
-import { IUser, SuperAdminCreationResult, UserRole, UserStatus } from "../types/user.types";
+import {
+  IUser,
+  SuperAdminCreationResult,
+  UserRole,
+  UserStatus,
+} from "../types/user.types";
 import { Faculty, Student, SuperAdmin, User } from "../models/user.model";
 import crypto from "crypto";
 
@@ -88,28 +93,41 @@ class AuthService {
     }
   }
 
-
-  
   // Login user
   public async login(email: string, password: string): Promise<AuthResponse> {
     try {
+      console.log("🔍 Login attempt for email:", email);
+
       // Use single User model instead of checking multiple collections
       const user = (await User.findOne({ email: email.toLowerCase() })
         .select("+password")
         .exec()) as IUser | null;
 
+      console.log("🔍 User found in database:", !!user);
+      if (user) {
+        console.log("🔍 User role:", user.role);
+        console.log("🔍 User status:", user.status);
+        console.log("🔍 User has password:", !!user.password);
+      }
+
       if (!user) {
+        console.log("❌ No user found for email:", email);
         throw new Error("Invalid email or password");
       }
 
       // Check if user is active
       if (!user.isActive()) {
+        console.log("❌ User is not active. Status:", user.status);
         throw new Error("Account is not active. Please contact administrator.");
       }
 
       // Compare password
+      console.log("🔍 Comparing passwords...");
       const isPasswordValid = await user.comparePassword(password);
+      console.log("🔍 Password valid:", isPasswordValid);
+
       if (!isPasswordValid) {
+        console.log("❌ Password comparison failed");
         throw new Error("Invalid email or password");
       }
 
@@ -129,12 +147,14 @@ class AuthService {
       // Remove password from response
       const userResponse = user.toJSON() as IUser;
 
+      console.log("✅ Login successful for user:", user.email);
       return {
         user: userResponse,
         accessToken: tokens.accessToken,
         refreshToken: tokens.refreshToken,
       };
     } catch (error: any) {
+      console.error("❌ Login error:", error.message);
       throw new Error(error.message || "Login failed");
     }
   }
@@ -160,7 +180,7 @@ class AuthService {
       const temporaryPassword =
         providedPassword || this.generateSecurePassword();
 
-      // Create default super admin
+      // Create default super admin - REMOVED mustChangePassword field
       const superAdminData = {
         email: process.env.SUPER_ADMIN_EMAIL || "admin@aiparaphrasing.com",
         password: temporaryPassword,
@@ -172,8 +192,7 @@ class AuthService {
           phone: "+1234567890",
         },
         isEmailVerified: true,
-        // Add flag to force password change on first login
-        mustChangePassword: !providedPassword, // Force change if auto-generated
+        // REMOVED: mustChangePassword: !providedPassword, // This field doesn't exist in schema!
       };
 
       const superAdmin = new SuperAdmin(superAdminData);
