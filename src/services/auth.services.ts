@@ -88,6 +88,8 @@ class AuthService {
     }
   }
 
+
+  
   // Login user
   public async login(email: string, password: string): Promise<AuthResponse> {
     try {
