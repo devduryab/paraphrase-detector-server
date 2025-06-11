@@ -36,7 +36,7 @@ class Server {
       cors({
         origin:
           process.env.NODE_ENV === "production"
-            ? ["https://your-frontend-domain.com"]
+            ? ["https://ai-paraphrasing-frontend.vercel.app"]
             : ["http://localhost:3000", "http://localhost:3001"],
         credentials: true,
       })
