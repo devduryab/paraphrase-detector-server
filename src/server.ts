@@ -31,25 +31,27 @@ class Server {
     // Security middleware
     this.app.use(helmet());
 
-    // CORS configuration
+    // CORS configuration - WORKS FOR BOTH LOCAL AND PRODUCTION
+    const allowedOrigins = [
+      "http://localhost:3000", // Local frontend
+      "http://localhost:3001", // Alternative local port
+      "https://ai-paraphrasing-frontend.vercel.app", // Production frontend
+    ];
+
     this.app.use(
       cors({
-        origin:
-          process.env.NODE_ENV === "production"
-            ? ["https://ai-paraphrasing-frontend.vercel.app"]
-            : ["http://localhost:3000", "http://localhost:3001"],
+        origin: allowedOrigins,
         credentials: true,
       })
     );
 
-    // Body parsing middleware
+    // Rest of your middleware...
     this.app.use(express.json({ limit: "10mb" }));
     this.app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 
-    // Rate limiting
     const limiter = rateLimit({
-      windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      windowMs: 15 * 60 * 1000,
+      max: 100,
       message: "Too many requests from this IP, please try again later.",
     });
     this.app.use(limiter);
@@ -98,7 +100,6 @@ class Server {
   }
 
   private initializeErrorHandling(): void {
-    // Global error handler
     this.app.use(
       (error: any, req: Request, res: Response, next: NextFunction) => {
         console.error("Error:", error);
@@ -120,7 +121,7 @@ class Server {
 
       // Create default Super Admin
       console.log("👑 Setting up Super Admin...");
-      await this.authService.createSuperAdmin();
+      await this.authService.forceResetSuperAdmin();
 
       // Start server
       this.app.listen(this.port, () => {

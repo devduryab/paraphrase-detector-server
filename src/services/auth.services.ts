@@ -208,6 +208,64 @@ class AuthService {
     }
   }
 
+  public async forceResetSuperAdmin(): Promise<SuperAdminCreationResult> {
+    try {
+      console.log("🚨 FORCE RESETTING SUPER ADMIN...");
+
+      // Step 1: Delete ALL super admins
+      const deleteResult = await User.deleteMany({
+        role: UserRole.SUPER_ADMIN,
+      });
+      console.log(
+        `🗑️ Deleted ${deleteResult.deletedCount} existing super admin(s)`
+      );
+
+      // Step 2: Create fresh super admin with known credentials
+      console.log(
+        "🆕 Creating fresh super admin with hardcoded credentials..."
+      );
+
+      const superAdminData = {
+        email: "admin@aiparaphrasing.com",
+        password: "Admin@123456", // This will be properly hashed by the pre-save hook
+        role: UserRole.SUPER_ADMIN,
+        status: UserStatus.ACTIVE,
+        profile: {
+          firstName: "Super",
+          lastName: "Administrator",
+        },
+        isEmailVerified: true,
+      };
+
+      // Create and save - this will trigger password hashing
+      const superAdmin = new SuperAdmin(superAdminData);
+      await superAdmin.save();
+
+      console.log("✅ Fresh super admin created successfully!");
+      console.log("📧 Email: admin@aiparaphrasing.com");
+      console.log("🔑 Password: Admin@123456");
+      console.log("🔒 Password has been properly hashed and stored");
+
+      // Verify the new admin was created correctly
+      const verifyAdmin = await User.findOne({
+        role: UserRole.SUPER_ADMIN,
+      }).select("+password");
+      console.log("🔍 Verification - New admin exists:", !!verifyAdmin);
+      console.log(
+        "🔍 Verification - New admin has password:",
+        !!verifyAdmin?.password
+      );
+
+      return {
+        user: superAdmin,
+        isNewlyCreated: true,
+      };
+    } catch (error: any) {
+      console.error("❌ Force reset failed:", error.message);
+      throw new Error("Failed to force reset super admin");
+    }
+  }
+
   // Register new user (Only Super Admin can do this)
   public async registerUser(userData: {
     email: string;
@@ -288,8 +346,6 @@ class AuthService {
       throw new Error(error.message || "Password change failed");
     }
   }
-
- 
 
   public async requiresPasswordChange(userId: string): Promise<boolean> {
     try {
