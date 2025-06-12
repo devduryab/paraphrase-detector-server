@@ -168,31 +168,26 @@ class AuthService {
       });
 
       if (existingSuperAdmin) {
-        console.log("👑 Super Admin already exists");
+        console.log("✅ Super Admin already exists - skipping creation");
         return {
           user: existingSuperAdmin,
           isNewlyCreated: false,
         };
       }
 
-      // Generate secure random password if not provided
-      const providedPassword = process.env.SUPER_ADMIN_PASSWORD;
-      const temporaryPassword =
-        providedPassword || this.generateSecurePassword();
+      // Create super admin ONLY if it doesn't exist
+      console.log("🆕 Creating super admin for the first time...");
 
-      // Create default super admin - REMOVED mustChangePassword field
       const superAdminData = {
-        email: process.env.SUPER_ADMIN_EMAIL || "admin@aiparaphrasing.com",
-        password: temporaryPassword,
+        email: "admin@aiparaphrasing.com", // Hardcoded
+        password: "Admin@123456", // Hardcoded
         role: UserRole.SUPER_ADMIN,
         status: UserStatus.ACTIVE,
         profile: {
           firstName: "Super",
           lastName: "Administrator",
-          phone: "+1234567890",
         },
         isEmailVerified: true,
-        // REMOVED: mustChangePassword: !providedPassword, // This field doesn't exist in schema!
       };
 
       const superAdmin = new SuperAdmin(superAdminData);
@@ -200,24 +195,12 @@ class AuthService {
 
       console.log("👑 Super Admin created successfully");
       console.log(`📧 Email: ${superAdminData.email}`);
-
-      // Only show password if it was auto-generated and only once
-      if (!providedPassword) {
-        console.log(
-          "🔑 TEMPORARY PASSWORD (SAVE THIS - WON'T BE SHOWN AGAIN):"
-        );
-        console.log(`    ${temporaryPassword}`);
-        console.log("⚠️  PASSWORD CHANGE REQUIRED ON FIRST LOGIN");
-      } else {
-        console.log("🔑 Using password from environment variables");
-      }
-
-      console.log("⚠️  Please secure your admin credentials immediately");
+      console.log(`🔑 Password: ${superAdminData.password}`);
+      console.log("✅ Use these credentials to login");
 
       return {
         user: superAdmin,
         isNewlyCreated: true,
-        temporaryPassword: !providedPassword ? temporaryPassword : undefined,
       };
     } catch (error: any) {
       console.error("❌ Failed to create Super Admin:", error.message);
@@ -306,37 +289,7 @@ class AuthService {
     }
   }
 
-  private generateSecurePassword(length: number = 16): string {
-    const charset =
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    let password = "";
-
-    // Ensure at least one of each required character type
-    const requiredChars = [
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ", // uppercase
-      "abcdefghijklmnopqrstuvwxyz", // lowercase
-      "0123456789", // numbers
-      "!@#$%^&*", // special characters
-    ];
-
-    // Add one character from each required set
-    requiredChars.forEach((chars) => {
-      const randomIndex = crypto.randomInt(0, chars.length);
-      password += chars[randomIndex];
-    });
-
-    // Fill the rest with random characters
-    for (let i = password.length; i < length; i++) {
-      const randomIndex = crypto.randomInt(0, charset.length);
-      password += charset[randomIndex];
-    }
-
-    // Shuffle the password to avoid predictable patterns
-    return password
-      .split("")
-      .sort(() => crypto.randomInt(-1, 2))
-      .join("");
-  }
+ 
 
   public async requiresPasswordChange(userId: string): Promise<boolean> {
     try {
