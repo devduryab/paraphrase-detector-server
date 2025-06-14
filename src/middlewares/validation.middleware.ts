@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import Joi from "joi";
+import Joi, { allow } from "joi";
 import { UserRole } from "../types/user.types";
 
 class ValidationMiddleware {
@@ -67,6 +67,7 @@ class ValidationMiddleware {
         phone: Joi.string()
           .pattern(new RegExp("^[+]?[1-9][0-9]{7,15}$"))
           .optional()
+          .allow("")
           .messages({
             "string.pattern.base": "Please provide a valid phone number",
           }),
