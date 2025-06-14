@@ -114,7 +114,9 @@ class AuthService {
         console.log("❌ No user found for email:", email);
         throw new Error("Invalid email or password");
       }
-
+      console.log("🔍 User status from DB:", user.status);
+      console.log("🔍 UserStatus.ACTIVE constant:", UserStatus.ACTIVE);
+      console.log("🔍 isActive() result:", user.isActive());
       // Check if user is active
       if (!user.isActive()) {
         console.log("❌ User is not active. Status:", user.status);

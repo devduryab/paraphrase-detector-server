@@ -326,7 +326,9 @@ class AuthController {
           collections: {
             students: await User.countDocuments({ role: UserRole.STUDENT }),
             faculty: await User.countDocuments({ role: UserRole.FACULTY }),
-            superAdmins: await User.countDocuments({ role: UserRole.SUPER_ADMIN }),
+            superAdmins: await User.countDocuments({
+              role: UserRole.SUPER_ADMIN,
+            }),
           },
           pagination: {
             currentPage: Number(page),
@@ -420,6 +422,67 @@ class AuthController {
       res.status(400).json({
         status: "error",
         message: error.message || "User deletion failed",
+      });
+    }
+  };
+
+  // Get single user by ID
+  public getUserById = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userId } = req.params;
+
+      const user = await User.findById(userId);
+
+      if (!user) {
+        res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        status: "success",
+        message: "User retrieved successfully",
+        data: { user },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        status: "error",
+        message: error.message || "Failed to get user",
+      });
+    }
+  };
+
+  // Update user details
+  public updateUser = async (req: Request, res: Response): Promise<void> => {
+    try {
+      const { userId } = req.params;
+      const updateData = req.body;
+
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      );
+
+      if (!user) {
+        res.status(404).json({
+          status: "error",
+          message: "User not found",
+        });
+        return;
+      }
+
+      res.status(200).json({
+        status: "success",
+        message: "User updated successfully",
+        data: { user },
+      });
+    } catch (error: any) {
+      res.status(400).json({
+        status: "error",
+        message: error.message || "User update failed",
       });
     }
   };

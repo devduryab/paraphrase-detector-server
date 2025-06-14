@@ -216,6 +216,33 @@ class ValidationMiddleware {
     };
   };
 
+  // User update validation
+  public validateUserUpdate = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      email: Joi.string().email().optional(),
+      role: Joi.string()
+        .valid(...Object.values(UserRole))
+        .optional(),
+      profile: Joi.object({
+        firstName: Joi.string().trim().min(2).max(50).optional(),
+        lastName: Joi.string().trim().min(2).max(50).optional(),
+        phone: Joi.string()
+          .pattern(new RegExp("^[+]?[1-9][0-9]{7,15}$"))
+          .optional()
+          .allow(""),
+      }).optional(),
+      status: Joi.string()
+        .valid("active", "inactive", "suspended", "pending")
+        .optional(),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
   // Generic validation method
   private validate = (
     schema: Joi.ObjectSchema,

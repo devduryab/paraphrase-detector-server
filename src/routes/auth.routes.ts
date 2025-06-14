@@ -1,7 +1,7 @@
-import { Router } from 'express';
-import AuthController from '../controllers/auth.controllers';
-import AuthMiddleware from '../middlewares/auth.middleware';
-import ValidationMiddleware from '../middlewares/validation.middleware';
+import { Router } from "express";
+import AuthController from "../controllers/auth.controllers";
+import AuthMiddleware from "../middlewares/auth.middleware";
+import ValidationMiddleware from "../middlewares/validation.middleware";
 
 class AuthRoutes {
   public router: Router;
@@ -12,16 +12,15 @@ class AuthRoutes {
   }
 
   private initializeRoutes(): void {
-    
     // Public routes (No authentication required)
-    
+
     /**
      * @route   POST /api/auth/login
      * @desc    Login user (All roles)
      * @access  Public
      */
     this.router.post(
-      '/login',
+      "/login",
       ValidationMiddleware.validateLogin,
       AuthController.login
     );
@@ -32,7 +31,7 @@ class AuthRoutes {
      * @access  Public
      */
     this.router.post(
-      '/refresh-token',
+      "/refresh-token",
       ValidationMiddleware.validateRefreshToken,
       AuthController.refreshToken
     );
@@ -44,17 +43,13 @@ class AuthRoutes {
      * @desc    Verify JWT token
      * @access  Private
      */
-    this.router.get(
-      '/verify',
-      AuthMiddleware.authenticate,
-      (req, res) => {
-        res.status(200).json({
-          status: 'success',
-          message: 'Token verified successfully',
-          user: req.user
-        });
-      }
-    );
+    this.router.get("/verify", AuthMiddleware.authenticate, (req, res) => {
+      res.status(200).json({
+        status: "success",
+        message: "Token verified successfully",
+        user: req.user,
+      });
+    });
 
     /**
      * @route   GET /api/auth/profile
@@ -62,7 +57,7 @@ class AuthRoutes {
      * @access  Private (All authenticated users)
      */
     this.router.get(
-      '/profile',
+      "/profile",
       AuthMiddleware.authenticate,
       AuthController.getProfile
     );
@@ -73,7 +68,7 @@ class AuthRoutes {
      * @access  Private (All authenticated users)
      */
     this.router.put(
-      '/profile',
+      "/profile",
       AuthMiddleware.authenticate,
       ValidationMiddleware.validateProfileUpdate,
       AuthController.updateProfile
@@ -85,7 +80,7 @@ class AuthRoutes {
      * @access  Private (All authenticated users)
      */
     this.router.post(
-      '/change-password',
+      "/change-password",
       AuthMiddleware.authenticate,
       ValidationMiddleware.validatePasswordChange,
       AuthController.changePassword
@@ -97,7 +92,7 @@ class AuthRoutes {
      * @access  Private (All authenticated users)
      */
     this.router.post(
-      '/logout',
+      "/logout",
       AuthMiddleware.authenticate,
       AuthController.logout
     );
@@ -110,7 +105,7 @@ class AuthRoutes {
      * @access  Private (Super Admin only)
      */
     this.router.post(
-      '/register',
+      "/register",
       AuthMiddleware.authenticate,
       AuthMiddleware.superAdminOnly,
       ValidationMiddleware.validateRegister,
@@ -123,7 +118,7 @@ class AuthRoutes {
      * @access  Private (Super Admin only)
      */
     this.router.get(
-      '/users',
+      "/users",
       AuthMiddleware.authenticate,
       AuthMiddleware.superAdminOnly,
       ValidationMiddleware.validateUserQuery,
@@ -136,10 +131,10 @@ class AuthRoutes {
      * @access  Private (Super Admin only)
      */
     this.router.put(
-      '/users/:userId/status',
+      "/users/:userId/status",
       AuthMiddleware.authenticate,
       AuthMiddleware.superAdminOnly,
-      ValidationMiddleware.validateObjectId('userId'),
+      ValidationMiddleware.validateObjectId("userId"),
       ValidationMiddleware.validateStatusUpdate,
       AuthController.updateUserStatus
     );
@@ -150,10 +145,10 @@ class AuthRoutes {
      * @access  Private (Super Admin only)
      */
     this.router.delete(
-      '/users/:userId',
+      "/users/:userId",
       AuthMiddleware.authenticate,
       AuthMiddleware.superAdminOnly,
-      ValidationMiddleware.validateObjectId('userId'),
+      ValidationMiddleware.validateObjectId("userId"),
       AuthController.deleteUser
     );
 
@@ -165,18 +160,18 @@ class AuthRoutes {
      * @access  Private (All authenticated users)
      */
     this.router.get(
-      '/test-protected',
+      "/test-protected",
       AuthMiddleware.authenticate,
       (req, res) => {
         res.json({
-          status: 'success',
-          message: 'Protected route accessed successfully',
+          status: "success",
+          message: "Protected route accessed successfully",
           user: {
             id: req.user._id,
             email: req.user.email,
             role: req.user.role,
-            name: req.user.getFullName()
-          }
+            name: req.user.getFullName(),
+          },
         });
       }
     );
@@ -187,21 +182,48 @@ class AuthRoutes {
      * @access  Private (Super Admin only)
      */
     this.router.get(
-      '/test-admin',
+      "/test-admin",
       AuthMiddleware.authenticate,
       AuthMiddleware.superAdminOnly,
       (req, res) => {
         res.json({
-          status: 'success',
-          message: 'Super Admin route accessed successfully',
+          status: "success",
+          message: "Super Admin route accessed successfully",
           user: {
             id: req.user._id,
             email: req.user.email,
             role: req.user.role,
-            name: req.user.getFullName()
-          }
+            name: req.user.getFullName(),
+          },
         });
       }
+    );
+
+    /**
+     * @route   GET /api/auth/users/:userId
+     * @desc    Get single user by ID
+     * @access  Private (Super Admin only)
+     */
+    this.router.get(
+      "/users/:userId",
+      AuthMiddleware.authenticate,
+      AuthMiddleware.superAdminOnly,
+      ValidationMiddleware.validateObjectId("userId"),
+      AuthController.getUserById
+    );
+
+    /**
+     * @route   PUT /api/auth/users/:userId
+     * @desc    Update user details
+     * @access  Private (Super Admin only)
+     */
+    this.router.put(
+      "/users/:userId",
+      AuthMiddleware.authenticate,
+      AuthMiddleware.superAdminOnly,
+      ValidationMiddleware.validateObjectId("userId"),
+      ValidationMiddleware.validateUserUpdate,
+      AuthController.updateUser
     );
   }
 }
