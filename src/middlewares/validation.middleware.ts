@@ -286,6 +286,77 @@ class ValidationMiddleware {
 
     next();
   };
+
+  // Course creation validation
+  public validateCreateCourse = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      name: Joi.string().trim().min(2).max(100).required().messages({
+        "string.min": "Course name must be at least 2 characters long",
+        "string.max": "Course name cannot exceed 100 characters",
+        "any.required": "Course name is required",
+      }),
+      maxSlots: Joi.number().integer().min(1).max(1000).required().messages({
+        "number.min": "Maximum slots must be at least 1",
+        "number.max": "Maximum slots cannot exceed 1000",
+        "any.required": "Maximum slots is required",
+      }),
+      assignedFaculty: Joi.array()
+        .items(Joi.string().pattern(new RegExp("^[0-9a-fA-F]{24}$")).required())
+        .min(1)
+        .required()
+        .messages({
+          "array.min": "At least one faculty member must be assigned",
+          "any.required": "Assigned faculty is required",
+        }),
+      status: Joi.string()
+        .valid("active", "inactive")
+        .default("active")
+        .messages({
+          "any.only": "Status must be either 'active' or 'inactive'",
+        }),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Course update validation
+  public validateUpdateCourse = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      name: Joi.string().trim().min(2).max(100).optional(),
+      maxSlots: Joi.number().integer().min(1).max(1000).optional(),
+      assignedFaculty: Joi.array()
+        .items(Joi.string().pattern(new RegExp("^[0-9a-fA-F]{24}$")))
+        .optional(),
+      status: Joi.string().valid("active", "inactive", "full").optional(),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Course query validation
+  public validateCourseQuery = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      status: Joi.string().valid("active", "inactive", "full").optional(),
+      search: Joi.string().trim().min(1).optional(),
+      facultyId: Joi.string()
+        .pattern(new RegExp("^[0-9a-fA-F]{24}$"))
+        .optional(),
+    });
+
+    this.validate(schema, req.query, res, next, "query", req);
+  };
 }
 
 export default new ValidationMiddleware();
