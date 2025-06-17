@@ -119,6 +119,8 @@ class AnalyticsController {
         assignedFaculty: facultyId,
       }).populate("enrolledStudents", "profile email");
 
+      
+
       const totalAssignedCourses = courses.length;
       const totalStudentsAcrossCourses = courses.reduce(
         (sum, course) => sum + course.enrolledStudents.length,
@@ -332,11 +334,35 @@ class AnalyticsController {
 
   // Helper method for recent enrollments
   private async getRecentEnrollments(courses: any[]) {
-    return courses.slice(0, 5).map((course, index) => ({
-      studentName: `Student ${index + 1}`, // You can enhance this with real student data
-      courseName: course.name,
-      enrollmentDate: course.updatedAt,
-    }));
+    const recentEnrollments: any[] = [];
+
+    // Get recent enrollments from all faculty courses
+    for (const course of courses.slice(0, 5)) {
+      if (course.enrolledStudents && course.enrolledStudents.length > 0) {
+        // Get the most recent students (assuming the last ones are most recent)
+        const recentStudents = course.enrolledStudents.slice(-2); // Get last 2 students per course
+
+        recentStudents.forEach((student: any) => {
+          recentEnrollments.push({
+            studentName:
+              `${student.profile?.firstName || ""} ${
+                student.profile?.lastName || ""
+              }`.trim() || "Unknown Student",
+            courseName: course.name,
+            enrollmentDate: course.updatedAt,
+          });
+        });
+      }
+    }
+
+    // Sort by date and return most recent
+    return recentEnrollments
+      .sort(
+        (a, b) =>
+          new Date(b.enrollmentDate).getTime() -
+          new Date(a.enrollmentDate).getTime()
+      )
+      .slice(0, 5);
   }
 
   // Helper method for faculty overview
