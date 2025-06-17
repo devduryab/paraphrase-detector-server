@@ -357,6 +357,138 @@ class ValidationMiddleware {
 
     this.validate(schema, req.query, res, next, "query", req);
   };
+
+  // Assignment creation validation
+  public validateCreateAssignment = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      title: Joi.string().trim().min(3).max(200).required().messages({
+        "string.min": "Assignment title must be at least 3 characters long",
+        "string.max": "Assignment title cannot exceed 200 characters",
+        "any.required": "Assignment title is required",
+      }),
+      description: Joi.string().trim().min(10).max(1000).required().messages({
+        "string.min": "Description must be at least 10 characters long",
+        "string.max": "Description cannot exceed 1000 characters",
+        "any.required": "Assignment description is required",
+      }),
+      instructions: Joi.string().trim().max(2000).optional().allow(""),
+      courseId: Joi.string()
+        .pattern(new RegExp("^[0-9a-fA-F]{24}$"))
+        .required()
+        .messages({
+          "string.pattern.base": "Invalid course ID format",
+          "any.required": "Course ID is required",
+        }),
+      assignmentType: Joi.string()
+        .valid("text", "file_upload", "both")
+        .required()
+        .messages({
+          "any.only": "Assignment type must be text, file_upload, or both",
+          "any.required": "Assignment type is required",
+        }),
+      maxScore: Joi.number().integer().min(1).max(1000).required().messages({
+        "number.min": "Maximum score must be at least 1",
+        "number.max": "Maximum score cannot exceed 1000",
+        "any.required": "Maximum score is required",
+      }),
+      dueDate: Joi.date().greater("now").required().messages({
+        "date.greater": "Due date must be in the future",
+        "any.required": "Due date is required",
+      }),
+      allowLateSubmission: Joi.boolean().default(false),
+      latePenalty: Joi.number().min(0).max(100).optional(),
+      status: Joi.string()
+        .valid("draft", "active", "archived")
+        .default("draft"),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Assignment update validation
+  public validateUpdateAssignment = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      title: Joi.string().trim().min(3).max(200).optional(),
+      description: Joi.string().trim().min(10).max(1000).optional(),
+      instructions: Joi.string().trim().max(2000).optional().allow(""),
+      assignmentType: Joi.string()
+        .valid("text", "file_upload", "both")
+        .optional(),
+      maxScore: Joi.number().integer().min(1).max(1000).optional(),
+      dueDate: Joi.date().greater("now").optional(),
+      allowLateSubmission: Joi.boolean().optional(),
+      latePenalty: Joi.number().min(0).max(100).optional(),
+      status: Joi.string().valid("draft", "active", "archived").optional(),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Submission creation validation
+  public validateCreateSubmission = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      assignmentId: Joi.string()
+        .pattern(new RegExp("^[0-9a-fA-F]{24}$"))
+        .required()
+        .messages({
+          "string.pattern.base": "Invalid assignment ID format",
+          "any.required": "Assignment ID is required",
+        }),
+      submissionText: Joi.string().trim().max(5000).optional().allow(""),
+      submissionFiles: Joi.array().items(Joi.string()).optional(),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Grade submission validation
+  public validateGradeSubmission = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      grade: Joi.number().min(0).required().messages({
+        "number.min": "Grade cannot be negative",
+        "any.required": "Grade is required",
+      }),
+      feedback: Joi.string().trim().max(1000).optional().allow(""),
+    });
+
+    this.validate(schema, req.body, res, next);
+  };
+
+  // Assignment query validation
+  public validateAssignmentQuery = (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): void => {
+    const schema = Joi.object({
+      facultyId: Joi.string()
+        .pattern(new RegExp("^[0-9a-fA-F]{24}$"))
+        .optional(),
+      courseId: Joi.string()
+        .pattern(new RegExp("^[0-9a-fA-F]{24}$"))
+        .optional(),
+      status: Joi.string().valid("draft", "active", "archived").optional(),
+      search: Joi.string().trim().min(1).optional(),
+    });
+
+    this.validate(schema, req.query, res, next, "query", req);
+  };
 }
 
 export default new ValidationMiddleware();
