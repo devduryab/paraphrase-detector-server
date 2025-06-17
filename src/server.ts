@@ -7,6 +7,7 @@ import Database from "./config/database";
 import AuthService from "./services/auth.services";
 import authRoutes from "./routes/auth.routes";
 import courseRoutes from "./routes/course.routes";
+import analyticsRoutes from "./routes/analytics.routes";
 
 // Load environment variables
 dotenv.config();
@@ -93,6 +94,10 @@ class Server {
 
     // Course routes - ADD THIS LINE
     this.app.use("/api/courses", courseRoutes);
+
+    // Analytics routes
+
+    this.app.use("/api/analytics", analyticsRoutes);
 
     // 404 handler
     this.app.use("*", (req: Request, res: Response) => {
