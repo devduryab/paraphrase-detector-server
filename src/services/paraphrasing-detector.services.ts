@@ -24,7 +24,7 @@ class ParaphrasingDetectorService {
 
   private constructor() {
     this.aiConfig = AIConfig.getInstance();
-    this.openai = this.aiConfig.openai;
+    this.openai = this.aiConfig.openai!;
     this.rateLimitState = {
       requestCount: 0,
       windowStart: Date.now(),
@@ -209,7 +209,7 @@ Please analyze this text carefully and respond with valid JSON only. Do not incl
     options?: OpenAIAnalysisRequest["options"]
   ): Promise<OpenAI.Chat.Completions.ChatCompletion> {
     const requestOptions: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
-      model: this.aiConfig.openaiConfig.model,
+      model: this.aiConfig.openaiConfig?.model || "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
@@ -221,9 +221,10 @@ Please analyze this text carefully and respond with valid JSON only. Do not incl
           content: prompt,
         },
       ],
-      max_tokens: options?.maxTokens || this.aiConfig.openaiConfig.maxTokens,
+      max_tokens:
+        options?.maxTokens || this.aiConfig.openaiConfig?.maxTokens || 2000,
       temperature:
-        options?.temperature || this.aiConfig.openaiConfig.temperature,
+        options?.temperature || this.aiConfig.openaiConfig?.temperature || 0.1,
       response_format: { type: "json_object" }, // Ensure JSON response
     };
 
@@ -437,7 +438,7 @@ Please analyze this text carefully and respond with valid JSON only. Do not incl
   private checkRateLimit(): { allowed: boolean; retryAfter?: number } {
     const now = Date.now();
     const windowMs = 60000; // 1 minute window
-    const maxRequests = this.aiConfig.rateLimiting.openaiRequestsPerMinute;
+    const maxRequests = 20;
 
     // Reset window if expired
     if (now - this.rateLimitState.windowStart > windowMs) {
@@ -505,9 +506,9 @@ Please analyze this text carefully and respond with valid JSON only. Do not incl
     return {
       rateLimitStatus: { ...this.rateLimitState },
       configuration: {
-        model: this.aiConfig.openaiConfig.model,
-        maxTokens: this.aiConfig.openaiConfig.maxTokens,
-        temperature: this.aiConfig.openaiConfig.temperature,
+        model: this.aiConfig.openaiConfig?.model || "gpt-3.5-turbo",
+        maxTokens: this.aiConfig.openaiConfig?.maxTokens || 2000,
+        temperature: this.aiConfig.openaiConfig?.temperature || 0.1,
       },
     };
   }

@@ -1,7 +1,7 @@
+// services/text-extractor.services.ts - Fix for missing fileConfig
 
 import mammoth from "mammoth";
 import pdfParse from "pdf-parse";
-// import { promises as fs } from 'fs';
 import path from "path";
 import { TextExtractionResult, ServiceResponse } from "../types/analysis.types";
 import AIConfig from "../config/ai.config";
@@ -9,6 +9,14 @@ import AIConfig from "../config/ai.config";
 class TextExtractorService {
   private static instance: TextExtractorService;
   private aiConfig: AIConfig;
+  
+  // ADD: Default file configuration when AI is disabled
+  private readonly defaultFileConfig = {
+    maxFileSize: 10485760, // 10MB
+    supportedFormats: ["pdf", "doc", "docx", "txt"],
+    extractionTimeout: 60000,
+    tempDirectory: "/tmp/ai-analysis",
+  };
 
   private constructor() {
     this.aiConfig = AIConfig.getInstance();
@@ -19,6 +27,19 @@ class TextExtractorService {
       TextExtractorService.instance = new TextExtractorService();
     }
     return TextExtractorService.instance;
+  }
+
+  // ADD: Helper method to get file config
+  private getFileConfig() {
+    // Use AI config if available, otherwise use defaults
+    return this.aiConfig.isEnabled && this.aiConfig.analysisConfig 
+      ? {
+          maxFileSize: this.aiConfig.analysisConfig.general?.maxFileSize || this.defaultFileConfig.maxFileSize,
+          supportedFormats: this.aiConfig.analysisConfig.general?.supportedFormats || this.defaultFileConfig.supportedFormats,
+          extractionTimeout: this.defaultFileConfig.extractionTimeout,
+          tempDirectory: this.defaultFileConfig.tempDirectory,
+        }
+      : this.defaultFileConfig;
   }
 
   /**
@@ -36,11 +57,14 @@ class TextExtractorService {
     const startTime = Date.now();
 
     try {
+      // CHANGE: Use helper method instead of direct access
+      const fileConfig = this.getFileConfig();
+
       // Validate file size
-      if (fileSize > this.aiConfig.fileConfig.maxFileSize) {
+      if (fileSize > fileConfig.maxFileSize) {
         return {
           success: false,
-          error: `File size ${fileSize} bytes exceeds maximum allowed size of ${this.aiConfig.fileConfig.maxFileSize} bytes`,
+          error: `File size ${fileSize} bytes exceeds maximum allowed size of ${fileConfig.maxFileSize} bytes`,
           statusCode: 400,
         };
       }
@@ -49,10 +73,10 @@ class TextExtractorService {
       const fileExtension = this.getFileExtension(fileName).toLowerCase();
 
       // Validate file type
-      if (!this.aiConfig.fileConfig.supportedFormats.includes(fileExtension)) {
+      if (!fileConfig.supportedFormats.includes(fileExtension)) {
         return {
           success: false,
-          error: `File type '${fileExtension}' is not supported. Supported formats: ${this.aiConfig.fileConfig.supportedFormats.join(
+          error: `File type '${fileExtension}' is not supported. Supported formats: ${fileConfig.supportedFormats.join(
             ", "
           )}`,
           statusCode: 400,

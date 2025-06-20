@@ -533,8 +533,8 @@ class AIAnalysisService {
         text: text,
         analysisType,
         options: {
-          maxTokens: this.aiConfig.openaiConfig.maxTokens,
-          temperature: this.aiConfig.openaiConfig.temperature,
+          maxTokens: this.aiConfig.openaiConfig?.maxTokens || 2000,
+          temperature: this.aiConfig.openaiConfig?.temperature || 0.1,
           includeExplanation: true,
         },
       };
@@ -571,7 +571,7 @@ class AIAnalysisService {
         suspiciousPatterns: this.extractSuspiciousPatterns(aiResponse),
         aiResponse: {
           rawResponse: JSON.stringify(aiResponse),
-          modelUsed: this.aiConfig.openaiConfig.model,
+          modelUsed: this.aiConfig.openaiConfig?.model || "gpt-3.5-turbo",
           tokensUsed: 0, // Would be populated from actual API response
           responseTime: 0, // Would be populated from actual API response
         },
@@ -874,7 +874,7 @@ class AIAnalysisService {
             suspiciousPatterns: [],
             aiResponse: {
               rawResponse: "",
-              modelUsed: this.aiConfig.openaiConfig.model,
+              modelUsed: this.aiConfig.openaiConfig?.model || "gpt-3.5-turbo",
               tokensUsed: 0,
               responseTime: 0,
             },

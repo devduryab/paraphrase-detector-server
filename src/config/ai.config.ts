@@ -1,3 +1,5 @@
+// config/ai.config.ts - Fixed TypeScript errors
+
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import Bull from "bull";
@@ -8,10 +10,14 @@ dotenv.config();
 
 class AIConfig {
   private static instance: AIConfig;
+  public isEnabled: boolean = false;
+  private reconnectAttempts: number = 0;
+  private maxReconnectAttempts: number = 5;
+  private reconnectTimeout: NodeJS.Timeout | null = null;
 
   // OpenAI Configuration
-  public readonly openai: OpenAI;
-  public readonly openaiConfig: {
+  public openai?: OpenAI;
+  public openaiConfig?: {
     apiKey: string;
     model: string;
     maxTokens: number;
@@ -20,48 +26,72 @@ class AIConfig {
   };
 
   // Queue Configuration
-  public analysisQueue: Bull.Queue;
-  public readonly queueConfig: {
-    redis:
-      | string
-      | {
-          host: string;
-          port: number;
-          password?: string;
-        };
-    settings: {
-      stalledInterval: number;
-      maxStalledCount: number;
-      retryProcessDelay: number;
-      backoffSettings: {
-        type: string;
-        delay: number;
-      };
-    };
-  };
+  public analysisQueue?: Bull.Queue;
+  public queueConfig?: any;
 
-  // Analysis Configuration
-  public readonly analysisConfig: AnalysisConfiguration;
-
-  // File Processing Configuration
-  public readonly fileConfig: {
-    maxFileSize: number;
-    supportedFormats: string[];
-    extractionTimeout: number;
-    tempDirectory: string;
-  };
-
-  // Rate Limiting Configuration
-  public readonly rateLimiting: {
-    openaiRequestsPerMinute: number;
-    analysisRequestsPerHour: number;
-    maxConcurrentAnalyses: number;
-  };
+  // Analysis Configuration - Initialize with default config
+  public analysisConfig: AnalysisConfiguration;
 
   private constructor() {
-    // Validate required environment variables
-    this.validateEnvironmentVariables();
+    // Initialize with default config first
+    this.analysisConfig = this.getDefaultAnalysisConfig();
 
+    // Check if AI analysis should be enabled
+    this.isEnabled = this.shouldEnableAI();
+
+    if (!this.isEnabled) {
+      console.log("ℹ️  AI Analysis is disabled");
+      return;
+    }
+
+    try {
+      this.initializeAIServices();
+      console.log("✅ AI Configuration initialized successfully");
+    } catch (error) {
+      console.error("❌ Failed to initialize AI services:", error);
+      this.isEnabled = false;
+    }
+  }
+
+  public static getInstance(): AIConfig {
+    if (!AIConfig.instance) {
+      AIConfig.instance = new AIConfig();
+    }
+    return AIConfig.instance;
+  }
+
+  private shouldEnableAI(): boolean {
+    // Check if explicitly disabled
+    if (process.env.ENABLE_AI_ANALYSIS === "false") {
+      console.log(
+        "ℹ️  AI Analysis explicitly disabled via ENABLE_AI_ANALYSIS=false"
+      );
+      return false;
+    }
+
+    // Check if in production without proper setup
+    if (process.env.NODE_ENV === "production") {
+      const hasOpenAI =
+        process.env.OPENAI_API_KEY &&
+        process.env.OPENAI_API_KEY.startsWith("sk-");
+      const hasRedis = process.env.REDIS_URL || process.env.REDIS_HOST;
+
+      if (!hasOpenAI || !hasRedis) {
+        console.log(
+          "ℹ️  AI Analysis disabled in production - missing OpenAI API key or Redis configuration"
+        );
+        return false;
+      }
+    }
+
+    // Enable if we have the required environment variables
+    return !!(
+      process.env.OPENAI_API_KEY &&
+      (process.env.REDIS_URL || process.env.REDIS_HOST)
+    );
+  }
+
+  private initializeAIServices(): void {
     // Initialize OpenAI
     this.openaiConfig = {
       apiKey: process.env.OPENAI_API_KEY!,
@@ -76,68 +106,10 @@ class AIConfig {
       timeout: this.openaiConfig.timeout,
     });
 
-    // Initialize Queue Configuration - FIX: Use REDIS_URL if available
-    let redisConfig: string | { host: string; port: number; password?: string };
+    // Initialize Redis with better error handling
+    this.initializeRedis();
 
-    if (process.env.REDIS_URL) {
-      // Use the full Redis URL for cloud providers like Upstash
-      redisConfig = process.env.REDIS_URL;
-    } else {
-      // Fallback to individual Redis configuration for local development
-      redisConfig = {
-        host: process.env.REDIS_HOST || "localhost",
-        port: parseInt(process.env.REDIS_PORT || "6379"),
-        password: process.env.REDIS_PASSWORD || undefined,
-      };
-    }
-
-    this.queueConfig = {
-      redis: redisConfig,
-      settings: {
-        stalledInterval: 30000, // 30 seconds
-        maxStalledCount: 3, // Max 3 stalled attempts
-        retryProcessDelay: 5000, // 5 seconds delay between retries
-        backoffSettings: {
-          type: "exponential",
-          delay: 2000,
-        },
-      },
-    };
-
-    // Initialize Analysis Queue with enhanced Redis configuration
-    this.analysisQueue = new Bull("ai-analysis-queue", {
-      redis:
-        typeof this.queueConfig.redis === "string"
-          ? this.queueConfig.redis // Pass URL string directly
-          : {
-              // For object configs, spread the existing config and add new options
-              ...this.queueConfig.redis,
-              maxRetriesPerRequest: 3,
-              enableReadyCheck: true,
-              lazyConnect: true,
-              family: 4,
-              keepAlive: 30000,
-              connectTimeout: 10000,
-              commandTimeout: 5000,
-
-              retryStrategy: (times: number) => {
-                const delay = Math.min(times * 50, 2000);
-                console.log(
-                  `Redis reconnection attempt ${times}, delay: ${delay}ms`
-                );
-                return delay;
-              },
-            },
-      settings: this.queueConfig.settings,
-      defaultJobOptions: {
-        removeOnComplete: 10, // Keep 10 completed jobs
-        removeOnFail: 50, // Keep 50 failed jobs for debugging
-        attempts: 3, // Retry failed jobs 3 times
-        backoff: this.queueConfig.settings.backoffSettings,
-      },
-    });
-
-    // Initialize Analysis Configuration
+    // Update Analysis Configuration
     this.analysisConfig = {
       paraphrasing: {
         confidenceThreshold: parseInt(
@@ -154,119 +126,125 @@ class AIConfig {
         minimumMatchLength: parseInt(process.env.MINIMUM_MATCH_LENGTH || "20"),
       },
       general: {
-        maxFileSize: parseInt(process.env.MAX_ANALYSIS_FILE_SIZE || "10485760"), // 10MB
+        maxFileSize: parseInt(process.env.MAX_ANALYSIS_FILE_SIZE || "10485760"),
         supportedFormats: (
           process.env.SUPPORTED_ANALYSIS_FORMATS || "pdf,docx,txt,doc"
         ).split(","),
-        defaultTimeout: parseInt(process.env.ANALYSIS_TIMEOUT || "300000"), // 5 minutes
+        defaultTimeout: parseInt(process.env.ANALYSIS_TIMEOUT || "300000"),
         retryAttempts: parseInt(process.env.ANALYSIS_RETRY_ATTEMPTS || "3"),
       },
     };
-
-    // Initialize File Configuration
-    this.fileConfig = {
-      maxFileSize: parseInt(process.env.MAX_FILE_SIZE || "10485760"), // 10MB
-      supportedFormats: (
-        process.env.ALLOWED_FILE_TYPES || "pdf,doc,docx,txt"
-      ).split(","),
-      extractionTimeout: parseInt(
-        process.env.TEXT_EXTRACTION_TIMEOUT || "60000"
-      ), // 1 minute
-      tempDirectory: process.env.TEMP_DIRECTORY || "/tmp/ai-analysis",
-    };
-
-    // Initialize Rate Limiting
-    this.rateLimiting = {
-      openaiRequestsPerMinute: parseInt(
-        process.env.OPENAI_REQUESTS_PER_MINUTE || "20"
-      ),
-      analysisRequestsPerHour: parseInt(
-        process.env.ANALYSIS_REQUESTS_PER_HOUR || "100"
-      ),
-      maxConcurrentAnalyses: parseInt(
-        process.env.MAX_CONCURRENT_ANALYSES || "5"
-      ),
-    };
-
-    // Setup queue event listeners
-    this.setupQueueEventListeners();
-
-    // Start monitoring Redis connection
-    this.monitorRedisConnection();
-
-    console.log("✅ AI Configuration initialized successfully");
-    console.log(`🤖 OpenAI Model: ${this.openaiConfig.model}`);
-
-    // Updated logging to show the correct Redis connection info
-    if (typeof this.queueConfig.redis === "string") {
-      console.log(`📊 Analysis Queue: Connected to Redis URL`);
-    } else {
-      console.log(
-        `📊 Analysis Queue: ${this.queueConfig.redis.host}:${this.queueConfig.redis.port}`
-      );
-    }
   }
 
-  public static getInstance(): AIConfig {
-    if (!AIConfig.instance) {
-      AIConfig.instance = new AIConfig();
-    }
-    return AIConfig.instance;
-  }
+  private initializeRedis(): void {
+    try {
+      let redisConfig: any;
 
-  private validateEnvironmentVariables(): void {
-    const requiredVars = ["OPENAI_API_KEY"];
-
-    // Check for either REDIS_URL or individual Redis variables
-    const hasRedisUrl = process.env.REDIS_URL;
-    const hasRedisHost = process.env.REDIS_HOST;
-
-    if (!hasRedisUrl && !hasRedisHost) {
-      requiredVars.push("REDIS_URL or REDIS_HOST");
-    }
-
-    const missingVars = requiredVars.filter((varName) => {
-      if (varName === "REDIS_URL or REDIS_HOST") {
-        return !hasRedisUrl && !hasRedisHost;
+      if (process.env.REDIS_URL) {
+        redisConfig = process.env.REDIS_URL;
+      } else {
+        redisConfig = {
+          host: process.env.REDIS_HOST || "localhost",
+          port: parseInt(process.env.REDIS_PORT || "6379"),
+          password: process.env.REDIS_PASSWORD || undefined,
+        };
       }
-      return !process.env[varName];
-    });
 
-    if (missingVars.length > 0) {
-      throw new Error(
-        `Missing required environment variables: ${missingVars.join(", ")}\n` +
-          "Please ensure these are set in your .env file"
-      );
+      this.queueConfig = {
+        redis: redisConfig,
+        settings: {
+          stalledInterval: 30000,
+          maxStalledCount: 3,
+          retryProcessDelay: 5000,
+          backoffSettings: {
+            type: "exponential",
+            delay: 2000,
+          },
+        },
+      };
+
+      // Create queue with enhanced error handling
+      this.analysisQueue = new Bull("ai-analysis-queue", {
+        redis:
+          typeof redisConfig === "string"
+            ? redisConfig
+            : {
+                ...redisConfig,
+                maxRetriesPerRequest: 3,
+                enableReadyCheck: false, // Disable ready check to prevent hanging
+                lazyConnect: true,
+                family: 4,
+                keepAlive: 30000,
+                connectTimeout: 10000,
+                commandTimeout: 5000,
+                retryStrategy: (times: number) => {
+                  if (times > this.maxReconnectAttempts) {
+                    console.log(
+                      "❌ Max Redis reconnection attempts reached, disabling AI analysis"
+                    );
+                    this.disableAIAnalysis();
+                    return null; // Stop retrying
+                  }
+                  const delay = Math.min(times * 1000, 10000);
+                  console.log(
+                    `🔄 Redis reconnection attempt ${times}/${this.maxReconnectAttempts}, delay: ${delay}ms`
+                  );
+                  return delay;
+                },
+              },
+        settings: this.queueConfig.settings,
+        defaultJobOptions: {
+          removeOnComplete: 10,
+          removeOnFail: 50,
+          attempts: 3,
+          backoff: this.queueConfig.settings.backoffSettings,
+        },
+      });
+
+      this.setupQueueEventListeners();
+    } catch (error) {
+      console.error("❌ Failed to initialize Redis:", error);
+      this.disableAIAnalysis();
     }
-
-    // Validate OpenAI API Key format
-    if (!process.env.OPENAI_API_KEY?.startsWith("sk-")) {
-      console.warn(
-        '⚠️  OpenAI API Key format may be invalid (should start with "sk-")'
-      );
-    }
-
-    console.log("✅ Environment variables validated");
   }
 
   private setupQueueEventListeners(): void {
-    // Queue monitoring events
+    if (!this.analysisQueue) return;
+
+    // Queue ready event
     this.analysisQueue.on("ready", () => {
       console.log("✅ Analysis queue is ready");
+      this.reconnectAttempts = 0; // Reset counter on successful connection
     });
 
+    // Enhanced error handling
     this.analysisQueue.on("error", (error) => {
-      console.error("❌ Analysis queue error:", error);
+      console.error("❌ Analysis queue error:", error.message);
 
-      // Attempt to reconnect if it's a connection error
-      if (
-        error.message.includes("ECONNREFUSED") ||
-        error.message.includes("ECONNRESET")
-      ) {
-        console.log("🔄 Attempting to reconnect Redis...");
-        setTimeout(() => {
-          this.reconnectRedis();
-        }, 5000);
+      // Don't attempt reconnection for certain errors
+      if (this.shouldDisableOnError(error)) {
+        console.log("🚫 Disabling AI analysis due to persistent Redis issues");
+        this.disableAIAnalysis();
+        return;
+      }
+
+      // Limited reconnection attempts
+      if (this.reconnectAttempts < this.maxReconnectAttempts) {
+        this.reconnectAttempts++;
+
+        // Clear existing timeout
+        if (this.reconnectTimeout) {
+          clearTimeout(this.reconnectTimeout);
+        }
+
+        this.reconnectTimeout = setTimeout(() => {
+          this.attemptReconnection();
+        }, 5000 * this.reconnectAttempts); // Exponential backoff
+      } else {
+        console.log(
+          "❌ Max reconnection attempts reached, disabling AI analysis"
+        );
+        this.disableAIAnalysis();
       }
     });
 
@@ -279,7 +257,7 @@ class AIConfig {
     });
 
     this.analysisQueue.on("completed", (job, result) => {
-      console.log(`✅ Job ${job.id} completed:`, result);
+      console.log(`✅ Job ${job.id} completed`);
     });
 
     this.analysisQueue.on("failed", (job, error) => {
@@ -291,59 +269,175 @@ class AIConfig {
     });
   }
 
-  private async reconnectRedis(): Promise<void> {
+  private shouldDisableOnError(error: any): boolean {
+    const disableErrors = [
+      "ECONNRESET",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "ENOTFOUND",
+    ];
+
+    return (
+      disableErrors.some(
+        (errorCode) =>
+          error.message.includes(errorCode) || (error as any).code === errorCode
+      ) && this.reconnectAttempts >= this.maxReconnectAttempts
+    );
+  }
+
+  private async attemptReconnection(): Promise<void> {
+    if (!this.isEnabled) return;
+
     try {
-      console.log("🔄 Attempting Redis reconnection...");
+      console.log(
+        `🔄 Attempting Redis reconnection (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`
+      );
 
       // Close existing connection
-      await this.analysisQueue.close();
+      if (this.analysisQueue) {
+        await this.analysisQueue.close();
+      }
 
-      // Wait a bit before reconnecting
+      // Wait before reconnecting
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
-      // Recreate the queue with enhanced configuration
-      this.analysisQueue = new Bull("ai-analysis-queue", {
-        redis:
-          typeof this.queueConfig.redis === "string"
-            ? this.queueConfig.redis // Bull handles URL parsing
-            : this.queueConfig.redis,
-        settings: this.queueConfig.settings,
-        defaultJobOptions: {
-          removeOnComplete: 10,
-          removeOnFail: 50,
-          attempts: 3,
-          backoff: this.queueConfig.settings.backoffSettings,
-        },
-      });
-
-      // Re-setup event listeners
-      this.setupQueueEventListeners();
-
-      console.log("✅ Redis reconnected successfully");
+      // Reinitialize Redis
+      this.initializeRedis();
     } catch (error: any) {
-      console.error("❌ Redis reconnection failed:", error);
+      console.error("❌ Redis reconnection failed:", error.message);
 
-      // Retry after a longer delay
-      setTimeout(() => {
-        this.reconnectRedis();
-      }, 10000);
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.disableAIAnalysis();
+      }
     }
   }
 
-  public async monitorRedisConnection(): Promise<void> {
-    setInterval(async () => {
-      try {
-        await this.analysisQueue.client.ping();
-        console.log("📡 Redis connection: OK");
-      } catch (error: any) {
-        console.error("📡 Redis connection: FAILED -", error.message);
-        this.reconnectRedis();
-      }
-    }, 30000); // Check every 30 seconds
+  private disableAIAnalysis(): void {
+    console.log("🚫 Disabling AI Analysis due to Redis connection issues");
+
+    this.isEnabled = false;
+
+    // Clear reconnection timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+      this.reconnectTimeout = null;
+    }
+
+    // Close queue if exists
+    if (this.analysisQueue) {
+      this.analysisQueue
+        .close()
+        .catch((err) => console.error("Error closing queue:", err));
+      this.analysisQueue = undefined;
+    }
   }
 
-  // Utility methods
+  private getDefaultAnalysisConfig(): AnalysisConfiguration {
+    return {
+      paraphrasing: {
+        confidenceThreshold: 70,
+        enableDeepAnalysis: false,
+        compareWithKnownSources: false,
+        detectAIGenerated: false,
+      },
+      plagiarism: {
+        sourceCheckEnabled: false,
+        internetSearchDepth: 0,
+        academicDatabaseCheck: false,
+        minimumMatchLength: 20,
+      },
+      general: {
+        maxFileSize: 10485760,
+        supportedFormats: ["pdf", "docx", "txt", "doc"],
+        defaultTimeout: 300000,
+        retryAttempts: 0,
+      },
+    };
+  }
+
+  // Health check methods
+  public async healthCheck(): Promise<{
+    openai: boolean;
+    redis: boolean;
+    queue: boolean;
+    overall: boolean;
+  }> {
+    if (!this.isEnabled) {
+      return {
+        openai: false,
+        redis: false,
+        queue: false,
+        overall: false,
+      };
+    }
+
+    let openaiHealth = false;
+    let redisHealth = false;
+    let queueHealth = false;
+
+    try {
+      if (this.openai) {
+        await this.openai.models.list();
+        openaiHealth = true;
+      }
+    } catch (error) {
+      console.error("OpenAI health check failed:", error);
+    }
+
+    try {
+      if (this.analysisQueue) {
+        await Promise.race([
+          this.analysisQueue.client.ping(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error("Redis ping timeout")), 5000)
+          ),
+        ]);
+        redisHealth = true;
+
+        await this.analysisQueue.getWaiting();
+        queueHealth = true;
+      }
+    } catch (error) {
+      console.error("Redis/Queue health check failed:", error);
+    }
+
+    const overall = openaiHealth && redisHealth && queueHealth;
+
+    return {
+      openai: openaiHealth,
+      redis: redisHealth,
+      queue: queueHealth,
+      overall,
+    };
+  }
+
+  // Graceful shutdown
+  public async shutdown(): Promise<void> {
+    console.log("🔄 Shutting down AI services...");
+
+    // Clear reconnection timeout
+    if (this.reconnectTimeout) {
+      clearTimeout(this.reconnectTimeout);
+    }
+
+    try {
+      if (this.analysisQueue) {
+        await this.analysisQueue.close();
+        console.log("✅ Analysis queue closed");
+      }
+    } catch (error) {
+      console.error("❌ Error closing analysis queue:", error);
+    }
+
+    console.log("✅ AI services shutdown complete");
+  }
+
+  // Utility methods for prompts
   public getAnalysisPrompt(analysisType: AnalysisType): string {
+    if (!this.isEnabled) {
+      return "AI Analysis is disabled";
+    }
+
     const prompts = {
       [AnalysisType.PARAPHRASING]: this.getParaphrasingPrompt(),
       [AnalysisType.PLAGIARISM]: this.getPlagiarismPrompt(),
@@ -414,72 +508,6 @@ Provide detailed similarity scores and highlight matching sections.`;
     return `You are an AI assistant specialized in general content analysis for academic integrity.
     
 Perform comprehensive analysis including writing quality, consistency, originality indicators, and academic standards compliance.`;
-  }
-
-  // Health check methods
-  public async healthCheck(): Promise<{
-    openai: boolean;
-    redis: boolean;
-    queue: boolean;
-    overall: boolean;
-  }> {
-    let openaiHealth = false;
-    let redisHealth = false;
-    let queueHealth = false;
-
-    try {
-      // Test OpenAI connection
-      await this.openai.models.list();
-      openaiHealth = true;
-    } catch (error) {
-      console.error("OpenAI health check failed:", error);
-    }
-
-    try {
-      // Test Redis connection with timeout
-      const pingPromise = this.analysisQueue.client.ping();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Redis ping timeout")), 5000)
-      );
-
-      await Promise.race([pingPromise, timeoutPromise]);
-      redisHealth = true;
-    } catch (error) {
-      console.error("Redis health check failed:", error);
-      // Attempt reconnection on health check failure
-      this.reconnectRedis();
-    }
-
-    try {
-      // Test Queue health
-      await this.analysisQueue.getWaiting();
-      queueHealth = true;
-    } catch (error) {
-      console.error("Queue health check failed:", error);
-    }
-
-    const overall = openaiHealth && redisHealth && queueHealth;
-
-    return {
-      openai: openaiHealth,
-      redis: redisHealth,
-      queue: queueHealth,
-      overall,
-    };
-  }
-
-  // Graceful shutdown
-  public async shutdown(): Promise<void> {
-    console.log("🔄 Shutting down AI services...");
-
-    try {
-      await this.analysisQueue.close();
-      console.log("✅ Analysis queue closed");
-    } catch (error) {
-      console.error("❌ Error closing analysis queue:", error);
-    }
-
-    console.log("✅ AI services shutdown complete");
   }
 }
 

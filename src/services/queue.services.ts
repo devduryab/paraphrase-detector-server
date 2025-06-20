@@ -39,9 +39,36 @@ class QueueService {
 
   private constructor() {
     this.aiConfig = AIConfig.getInstance();
+
+    // Check if AI is enabled
+    if (!this.aiConfig.isEnabled || !this.aiConfig.analysisQueue) {
+      console.log("⚠️  Queue service initialized but AI is disabled");
+      // Create a mock queue object to prevent errors
+      this.analysisQueue = this.createMockQueue();
+      return;
+    }
+
     this.analysisQueue = this.aiConfig.analysisQueue;
     this.setupQueueProcessors();
     this.setupQueueEvents();
+  }
+
+  private createMockQueue(): any {
+    return {
+      process: () =>
+        console.log("⚠️  Queue processing disabled - AI is not available"),
+      add: () => Promise.resolve({ id: "mock-job-id" }),
+      on: () => {},
+      getWaiting: () => Promise.resolve([]),
+      getActive: () => Promise.resolve([]),
+      getCompleted: () => Promise.resolve([]),
+      getFailed: () => Promise.resolve([]),
+      getDelayed: () => Promise.resolve([]),
+      getJob: () => Promise.resolve(null),
+      pause: () => Promise.resolve(),
+      resume: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
   }
 
   public static getInstance(): QueueService {
@@ -143,7 +170,7 @@ class QueueService {
     // Main analysis processor
     this.analysisQueue.process(
       "analyze-submission",
-      this.aiConfig.rateLimiting.maxConcurrentAnalyses,
+      5,
       async (job: Job<AnalysisJobData>) => {
         return await this.processAnalysisJob(job);
       }
@@ -339,7 +366,7 @@ class QueueService {
         suspiciousPatterns: [],
         aiResponse: {
           rawResponse: "",
-          modelUsed: this.aiConfig.openaiConfig.model,
+          modelUsed: this.aiConfig.openaiConfig?.model || "gpt-3.5-turbo",
           tokensUsed: 0,
           responseTime: 0,
         },
@@ -405,10 +432,7 @@ class QueueService {
     const baseProcessingTime = 30000; // 30 seconds per job
     const queuePosition = this.calculateQueuePosition(stats, priority);
 
-    return Math.ceil(
-      (queuePosition * baseProcessingTime) /
-        this.aiConfig.rateLimiting.maxConcurrentAnalyses
-    );
+    return Math.ceil((queuePosition * baseProcessingTime) / 5);
   }
 
   /**
