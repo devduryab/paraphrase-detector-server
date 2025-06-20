@@ -1,7 +1,7 @@
 // routes/assignment.routes.ts
 import { Router } from "express";
-import AuthMiddleware from "../middlewares/auth.middleware";
-import ValidationMiddleware from "../middlewares/validation.middleware";
+import AuthMiddleware from "../middleware/auth.middleware";
+import ValidationMiddleware from "../middleware/validation.middleware";
 import assignmentControllers from "../controllers/assignment.controllers";
 
 class AssignmentRoutes {

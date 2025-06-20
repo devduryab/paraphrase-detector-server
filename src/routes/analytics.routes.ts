@@ -1,6 +1,6 @@
 // routes/analytics.routes.ts
 import { Router } from "express";
-import AuthMiddleware from "../middlewares/auth.middleware";
+import AuthMiddleware from "../middleware/auth.middleware";
 import analyticsControllers from "../controllers/analytics.controllers";
 
 class AnalyticsRoutes {

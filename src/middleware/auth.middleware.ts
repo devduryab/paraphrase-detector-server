@@ -42,7 +42,7 @@ class AuthMiddleware {
       const decoded = this.authService.verifyToken(token);
 
       // Use single User model instead of checking multiple collections
-      const user = await User.findById(decoded.userId) as IUser | null;
+      const user = (await User.findById(decoded.userId)) as IUser | null;
 
       if (!user) {
         res.status(401).json({
